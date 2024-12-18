@@ -1,0 +1,243 @@
+qza formation for the single end data and paired end data fror demultiplesing data
+
+single end data qza file formation 
+
+qiime tools import \
+  --type 'SampleData[SequencesWithQuality]' \
+  --input-path your_single_end_fastq_file.fastq \
+  --output-path your_single_end_fastq.qza \
+  --input-format SingleEndFastqManifestPhred33
+
+paired end data -- qza data firmation
+
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path your_fastq_directory \
+  --output-path your_fastq.qza \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt
+  
+  
+ code for with out quality score 
+ 
+ qiime tools import \
+  --type 'SampleData[Sequences]' \
+  --input-path your_sequence_file.fasta \
+  --output-path your_sequence_file.qza \
+  --input-format SingleEndFastqManifestPhred33
+  
+  
+ code for barcoded sequences multyplexing data
+ 
+ qiime tools import \
+  --type EMPSingleEndSequences \
+  --input-path single-end-sequences \
+  --output-path single-end-sequences.qza
+  
+  ##################################################################################
+ codes with manifest file and fastq files
+ 
+ 
+ manifest.csv
+ 
+sample-id,absolute-filepath,direction,barcode-sequence
+sample1,/path/to/forward_reads.fastq.gz,forward,ACGCTGACGTCAGTACG
+sample1,/path/to/reverse_reads.fastq.gz,reverse,CGTACTGACGTAGACGT
+sample2,/path/to/forward_reads.fastq.gz,forward,ACTGACTGACTGACTGA
+sample2,/path/to/reverse_reads.fastq.gz,reverse,CGTACGTACGTACGTAC
+...
+mport Data:
+Use the manifest file to import your paired-end sequence data into QIIME 2:
+
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path manifest.csv \
+  --output-path paired-end-reads.qza \
+  --input-format PairedEndFastqManifestPhred33
+
+
+Demultiplexing:
+Demultiplex the paired-end reads using the manifest file:
+
+qiime demux emp-paired \
+  --m-barcodes-file manifest.csv \
+  --m-barcodes-column barcode-sequence \
+  --i-seqs paired-end-reads.qza \
+  --o-per-sample-sequences demultiplexed-seqs.qza \
+  --o-error-correction-details demux-details.qza
+  
+
+Filter out data for "Sample1":
+
+qiime feature-table filter-samples \
+  --i-table demuxed-seqs.qza \
+  --m-metadata-file metadata.txt \
+  --p-where "SampleID='Sample1'" \
+  --o-filtered-table Sample1-data.qza
+
+
+  ###################################################################################
+  
+  
+###demultiplexing data###
+
+qiime demux emp-single --i-seqs single-end-sequences.qza --m-barcodes-file sample_metadata.tsv --m-barcodes-column barcode-sequence --o-per-sample-sequences demux.qza --o-error-correction-details demux-details.qza
+
+
+###Demultiplexing and summary: demux output for the number of sequences, quality and length###
+
+qiime demux summarize --i-data demux.qza --o-visualization demux.qzv
+
+
+##############Sequence quality control and clustering of sequences (feature table/OTU table)##########
+
+
+qiime dada2 denoise-single --i-demultiplexed-seqs demux.qza --p-trim-left 0 --p-trunc-len 120 --o-
+representative-sequences rep-seqs.qza --o-table table.qza --o-denoising-stats stats-dada2.qza
+
+
+
+### Visualization of Dada2 feature table stats (number of sequences obtained after each step) ###
+qiime metadata tabulate --m-input-file stats-dada2.qza --o-visualization stats-dada2.qzv• 
+
+
+#### Summary of the feature table and representative sequences #####
+
+qiime feature-table summarize --i-table table.qza --o-visualization table.qzv --m-sample-metadata-file sample-
+metadata.tsv
+
+qiime feature-table tabulate-seqs --i-data rep-seqs.qza --o-visualization rep-seqs.qzv
+
+qiime tools export --input-path table.qza --output-path .
+
+.biom file is created by using qiime tools export command
+
+##biom file is convert into .tsv##
+
+biom convert --to-tsv -i feature-table.biom -o feature-table.tsv
+
+for phypogeny analys we use 
+
+qiime phylogeny --help
+
+###Phylogenetic tree for the diversity analysis###
+
+qiime phylogeny align-to-tree-mafft-fasttree --i-sequences rep-seqs.qza --o-alignment aligned-rep-seqs.qza --o-
+masked-alignment masked-aligned-rep-seqs.qza --o-tree unrooted-tree.qza --o-rooted-tree rooted-tree.qza
+
+
+out put 
+Saved FeatureData[AlignedSequence] to: aligned-rep-seqs.qza
+Saved FeatureData[AlignedSequence] to: masked-aligned-rep-seqs.qza
+Saved Phylogeny[Unrooted] to: unrooted-tree.qza
+Saved Phylogeny[Rooted] to: rooted-tree.qza
+
+rooted-tree.qza -- used for further analysis
+
+### Alpha rarefaction curve analysis##
+
+qiime diversity alpha-rarefaction --i-table table.qza --i-phylogeny rooted-tree.qza --p-max-depth 4000 --m-
+metadata-file sample_metadata.tsv --o-visualization alpha-rarefaction.qzv
+
+
+#### Alpha and beta diversity analysis ##
+
+qiime diversity core-metrics-phylogenetic --i-phylogeny rooted-tree.qza --i-table table.qza --p-sampling-depth
+1103 --m-metadata-file sample_metadata.tsv --output-dir core-metrics-results
+
+qiime diversity alpha-group-significance --i-alpha-diversity core-metrics-results/observed_features_vector.qza --m-metadata-file sample_metadata.tsv --o-visualization observed_features_significance.qzv
+
+
+### Beta group significance ###
+
+
+qiime diversity beta-group-significance --i-distance-matrix core-metrics-
+results/unweighted_unifrac_distance_matrix.qza --m-metadata-file sample_metadata.tsv --m-metadata-column
+body-site --o-visualization core-metrics-results/unweighted-unifrac-body-site-significance.qzv --p-pairwise
+
+qiime diversity beta-group-significance --i-distance-matrix core-metrics-results/unweighted_unifrac_distance_matrix.qza --m-metadata-file sample_metadata.tsv --m-metadata-column subject --o-visualization unweighted-unifrac-subject-group-significance.qzv --p-pairwise
+
+#### Taxonomic classification of the sequences (download the database) ###
+
+wget https://data.qiime2.org/2020.11/common/gg-13-8-99-515-806-nb-classifier.qza
+
+## Classification of representative sequences using Green genes database ###
+
+
+qiime feature-classifier classify-sklearn --i-classifier gg-13-8-99-515-806-nb-classifier.qza --i-reads
+rep-seqs.qza --o-classification taxonomy.qza --p-n-jobs 4
+
+###################################################################
+
+To use the Greengenes database for taxonomic classification in QIIME 2, you'll need to follow these general steps:
+
+Download and Prepare the Greengenes Database:
+
+Download the Greengenes database files (typically in FASTA format) from the Greengenes website or another trusted source.
+Prepare the database files according to QIIME 2 requirements, which may involve formatting and indexing the sequences appropriately.
+Train a Classifier:
+
+Use the QIIME 2 pipeline to train a taxonomic classifier using the Greengenes database.
+Train the classifier using the qiime feature-classifier fit-classifier-naive-bayes or qiime feature-classifier fit-classifier-sklearn command, depending on the classification method you prefer.
+Classify Sequences:
+
+Once the classifier is trained, you can use it to classify your sequences using the qiime feature-classifier classify-sklearn command.
+Here's an example of how you might train a classifier using the Greengenes database and classify sequences:
+
+
+Train Classifier:
+
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path gg_13_5_otus/rep_set/97_otus.fasta \
+  --output-path greengenes-sequences.qza
+
+qiime tools import \
+  --type 'FeatureData[Taxonomy]' \
+  --input-format HeaderlessTSVTaxonomyFormat \
+  --input-path gg_13_5_otus/taxonomy/97_otu_taxonomy.txt \
+  --output-path greengenes-taxonomy.qza
+
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads greengenes-sequences.qza \
+  --i-reference-taxonomy greengenes-taxonomy.qza \
+  --o-classifier greengenes-classifier.qza
+
+
+Classify Sequences:
+
+qiime feature-classifier classify-sklearn \
+  --i-classifier greengenes-classifier.qza \
+  --i-reads rep-seqs.qza \
+  --o-classification taxonomy.qza
+
+##########################################################################################
+
+####Annotate the taxonomy to the feature table###
+
+qiime metadata tabulate --m-input-file taxonomy.qza --o-visualization taxonomy.qzv
+
+#### Taxonomy barplot####
+
+qiime taxa barplot --i-table table.qza --i-taxonomy taxonomy.qza --m-metadata-file sample-
+metadata.tsv --o-visualization taxa-bar-plots.qzv
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
